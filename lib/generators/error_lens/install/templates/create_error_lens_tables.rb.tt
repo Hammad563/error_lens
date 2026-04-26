@@ -1,0 +1,69 @@
+class CreateErrorLensTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def change
+    create_table :error_lens_groups do |t|
+      t.string   :fingerprint,       null: false
+      t.string   :error_class,       null: false
+      t.text     :message
+      t.string   :source,            null: false, default: "web"
+      t.string   :environment
+      t.integer  :occurrences_count, null: false, default: 0
+      t.datetime :first_seen_at,     null: false
+      t.datetime :last_seen_at,      null: false
+      t.datetime :resolved_at
+      t.string   :location
+
+      t.timestamps
+    end
+
+    # fingerprint is used on every write (find_or_create_by)
+    add_index :error_lens_groups, :fingerprint, unique: true
+    # error_class is the main search/filter column in the UI
+    add_index :error_lens_groups, :error_class
+    # last_seen_at drives the default sort order
+    add_index :error_lens_groups, :last_seen_at
+    # resolved_at filters resolved vs unresolved
+    add_index :error_lens_groups, :resolved_at
+    # environment is a common filter (production vs staging)
+    add_index :error_lens_groups, :environment
+
+    create_table :error_lens_occurrences do |t|
+      t.references :error_group,  null: false, foreign_key: { to_table: :error_lens_groups }
+      t.text       :message
+      t.text       :backtrace
+      t.string     :source,       null: false, default: "web"
+      t.string     :environment
+      t.datetime   :occurred_at,  null: false
+
+      # web
+      t.string     :request_id
+      t.string     :url
+      t.string     :http_method
+      t.text       :parameters
+      t.string     :user_agent
+      t.string     :ip_address
+      t.string     :forwarded_for
+      t.text       :request_headers
+      t.string     :cause_class
+      t.text       :cause_message
+
+      # sidekiq
+      t.string     :job_class
+      t.text       :job_args
+      t.string     :job_id
+      t.string     :queue
+
+      t.timestamps
+    end
+
+    # occurred_at drives sort order on the samples list
+    add_index :error_lens_occurrences, :occurred_at
+    # source filters web vs sidekiq occurrences
+    add_index :error_lens_occurrences, :source
+    # request_id lets you look up a specific request
+    add_index :error_lens_occurrences, :request_id
+    # job_id lets you look up a specific sidekiq job
+    add_index :error_lens_occurrences, :job_id
+    # error_group_id + occurred_at together — used when loading samples for a group
+    add_index :error_lens_occurrences, [:error_group_id, :occurred_at]
+  end
+end

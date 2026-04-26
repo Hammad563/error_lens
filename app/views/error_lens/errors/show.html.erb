@@ -1,0 +1,195 @@
+<div class="page-header" style="padding-bottom:0;">
+  <div class="breadcrumb">
+    <%= link_to "Errors", errors_path %>
+    <span class="breadcrumb-sep">/</span>
+    <span><%= @group.error_class %></span>
+  </div>
+</div>
+
+<div class="error-header">
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+    <div style="flex:1; min-width:0;">
+      <div class="error-header-class"><%= @group.error_class %></div>
+      <%
+        raw_message    = @group.message.to_s
+        message_parts  = raw_message.split(/Searched in:\s*/m)
+        main_message   = message_parts.first.to_s.strip
+        searched_paths = message_parts[1].to_s.scan(/"([^"]+)"/).flatten
+      %>
+      <% if main_message.present? %>
+        <% if main_message.length > 300 %>
+          <details class="error-header-message">
+            <summary style="cursor:pointer; list-style:none; outline:none;">
+              <%= truncate(main_message, length: 300) %>
+              <span style="color:var(--info); font-size:12px; margin-left:4px;">Show more ▾</span>
+            </summary>
+            <div style="margin-top:6px;"><%= main_message[300..] %></div>
+          </details>
+        <% else %>
+          <div class="error-header-message"><%= main_message %></div>
+        <% end %>
+      <% end %>
+      <% if searched_paths.any? %>
+        <%
+          app_paths = searched_paths.select { |p| p.start_with?(Rails.root.to_s) }
+          gem_paths = searched_paths.reject { |p| p.start_with?(Rails.root.to_s) }
+        %>
+        <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap;">
+          <% if app_paths.any? %>
+            <div style="flex:1; min-width:240px;">
+              <div style="font-size:11px; font-weight:700; color:var(--info); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:6px;">App Paths</div>
+              <div class="card" style="padding:12px 16px;">
+                <% app_paths.each do |path| %>
+                  <div style="font-family:var(--font-mono); font-size:12px; color:var(--text); padding:3px 0; border-bottom:1px solid var(--border);">
+                    <span style="color:var(--info); margin-right:8px;">*</span><%= path.sub(Rails.root.to_s, "") %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+          <% if gem_paths.any? %>
+            <div style="flex:1; min-width:240px;">
+              <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:6px;">Gem Paths</div>
+              <div class="card" style="padding:12px 16px;">
+                <% gem_paths.each do |path| %>
+                  <div style="font-family:var(--font-mono); font-size:12px; color:var(--text-muted); padding:3px 0; border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text-light); margin-right:8px;">*</span><%= path %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    <div style="display:flex; gap:8px; flex-shrink:0;">
+      <% if @group.resolved? %>
+        <%= button_to "Reopen", unresolve_error_path(@group), method: :post, class: "btn btn-secondary btn-sm" %>
+      <% else %>
+        <%= button_to "Resolve", resolve_error_path(@group), method: :post, class: "btn btn-success btn-sm" %>
+      <% end %>
+      <%= button_to "Delete", error_path(@group), method: :delete, class: "btn btn-danger btn-sm", data: { confirm: "Delete this error group and all occurrences?" } %>
+    </div>
+  </div>
+
+  <div class="error-header-meta">
+    <div class="error-header-stat">
+      <strong><%= number_with_delimiter(@group.occurrences_count) %></strong> occurrences
+    </div>
+    <div class="error-header-stat">
+      First seen <strong><%= time_ago_in_words(@group.first_seen_at) %> ago</strong>
+    </div>
+    <div class="error-header-stat">
+      Last seen <strong><%= time_ago_in_words(@group.last_seen_at) %> ago</strong>
+    </div>
+    <div class="error-header-stat">
+      <% if @group.source == "web" %>
+        <span class="badge badge-blue">Web</span>
+      <% elsif @group.source == "sidekiq" %>
+        <span class="badge badge-purple">Sidekiq</span>
+      <% elsif @group.source == "both" %>
+        <span class="badge badge-gray">Both</span>
+      <% end %>
+    </div>
+    <% if @group.environment.present? %>
+      <div class="error-header-stat">
+        <span class="badge badge-gray"><%= @group.environment %></span>
+      </div>
+    <% end %>
+    <% if @group.resolved? %>
+      <span class="badge badge-green">Resolved</span>
+    <% end %>
+  </div>
+</div>
+
+<div class="card">
+  <% if @occurrences.any? %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Source</th>
+            <th>Request / Job ID</th>
+            <th>Location</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @occurrences.each do |occurrence| %>
+            <tr>
+              <td>
+                <div style="white-space:nowrap; font-size:13px;"><%= occurrence.occurred_at.strftime("%b %d, %Y") %></div>
+                <div class="last-seen"><%= occurrence.occurred_at.strftime("%H:%M:%S") %></div>
+              </td>
+              <td>
+                <% if occurrence.sidekiq? %>
+                  <span class="badge badge-purple">Sidekiq</span>
+                <% else %>
+                  <span class="badge badge-blue">Web</span>
+                <% end %>
+              </td>
+              <td>
+                <div style="font-family: var(--font-mono); font-size:11px; color: var(--text-muted);">
+                  <%= occurrence.request_id || "—" %>
+                </div>
+                <% if occurrence.sidekiq? && occurrence.job_class.present? %>
+                  <div style="font-size:11px; color: var(--text-muted); margin-top:2px;"><%= occurrence.job_class %></div>
+                <% elsif occurrence.url.present? %>
+                  <div style="font-size:11px; color: var(--text-muted); margin-top:2px;" title="<%= occurrence.url %>">
+                    <span class="badge badge-gray" style="font-size:10px;"><%= occurrence.http_method %></span>
+                    <%= truncate(occurrence.url, length: 50) %>
+                  </div>
+                <% end %>
+              </td>
+              <td>
+                <% app_line = occurrence.app_backtrace.first %>
+                <% if app_line %>
+                  <div style="font-family: var(--font-mono); font-size:11px; color: var(--text-muted);">
+                    <%= app_line.sub("#{Rails.root}/", "").split(":in").first %>
+                  </div>
+                <% end %>
+              </td>
+              <td style="text-align:right;">
+                <%= link_to "View", error_occurrence_path(@group, occurrence), class: "btn btn-secondary btn-sm" %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if @total_pages > 1 %>
+      <div class="pagination">
+        <% if @page > 1 %>
+          <%= link_to "←", error_path(@group, page: @page - 1) %>
+        <% else %>
+          <span class="disabled">←</span>
+        <% end %>
+
+        <% (1..@total_pages).each do |p| %>
+          <% if p == @page %>
+            <span class="current"><%= p %></span>
+          <% else %>
+            <%= link_to p, error_path(@group, page: p) %>
+          <% end %>
+        <% end %>
+
+        <% if @page < @total_pages %>
+          <%= link_to "→", error_path(@group, page: @page + 1) %>
+        <% else %>
+          <span class="disabled">→</span>
+        <% end %>
+      </div>
+    <% end %>
+
+  <% else %>
+    <div class="empty-state">
+      <div class="empty-state-title">No occurrences found</div>
+    </div>
+  <% end %>
+</div>
+
+<div style="text-align:center; color: var(--text-light); font-size:12px; padding: 16px 0;">
+  Showing <%= @occurrences.count %> of <%= @total %> occurrences
+</div>

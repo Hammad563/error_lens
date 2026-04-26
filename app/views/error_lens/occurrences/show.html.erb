@@ -1,0 +1,259 @@
+<div class="page-header" style="padding-bottom:0;">
+  <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+    <div class="breadcrumb">
+      <%= link_to "Errors", errors_path %>
+      <span class="breadcrumb-sep">/</span>
+      <%= link_to @group.error_class, error_path(@group) %>
+      <span class="breadcrumb-sep">/</span>
+      <span><%= @occurrence.occurred_at.strftime("%b %d, %Y at %H:%M:%S") %></span>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <% if @newer %>
+        <%= link_to "← Newer", error_occurrence_path(@group, @newer), class: "btn btn-secondary btn-sm" %>
+      <% else %>
+        <span class="btn btn-secondary btn-sm" style="opacity:0.4; cursor:default;">← Newer</span>
+      <% end %>
+      <% if @older %>
+        <%= link_to "Older →", error_occurrence_path(@group, @older), class: "btn btn-secondary btn-sm" %>
+      <% else %>
+        <span class="btn btn-secondary btn-sm" style="opacity:0.4; cursor:default;">Older →</span>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<%# ── Error header ── %>
+<%
+  raw_message    = @occurrence.message.to_s
+  message_parts  = raw_message.split(/Searched in:\s*/m)
+  main_message   = message_parts.first.to_s.strip
+  searched_paths = message_parts[1].to_s.scan(/"([^"]+)"/).flatten
+%>
+<div class="error-header" style="margin-top:16px;">
+  <div class="error-header-class"><%= @group.error_class %></div>
+  <% if main_message.present? %>
+    <% if main_message.length > 300 %>
+      <details class="error-header-message">
+        <summary style="cursor:pointer; list-style:none; outline:none;">
+          <%= truncate(main_message, length: 300) %>
+          <span style="color:var(--info); font-size:12px; margin-left:4px;">Show more ▾</span>
+        </summary>
+        <div style="margin-top:6px;"><%= main_message[300..] %></div>
+      </details>
+    <% else %>
+      <div class="error-header-message"><%= main_message %></div>
+    <% end %>
+  <% end %>
+
+  <% if searched_paths.any? %>
+    <%
+      app_paths = searched_paths.select { |p| p.start_with?(Rails.root.to_s) }
+      gem_paths = searched_paths.reject { |p| p.start_with?(Rails.root.to_s) }
+    %>
+    <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap;">
+      <% if app_paths.any? %>
+        <div style="flex:1; min-width:240px;">
+          <div style="font-size:11px; font-weight:700; color:var(--info); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:6px;">App Paths</div>
+          <div class="card" style="padding:12px 16px;">
+            <% app_paths.each do |path| %>
+              <div style="font-family:var(--font-mono); font-size:12px; color:var(--text); padding:3px 0; border-bottom:1px solid var(--border);">
+                <span style="color:var(--info); margin-right:8px;">*</span><%= path.sub(Rails.root.to_s, "") %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+      <% if gem_paths.any? %>
+        <div style="flex:1; min-width:240px;">
+          <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:6px;">Gem Paths</div>
+          <div class="card" style="padding:12px 16px;">
+            <% gem_paths.each do |path| %>
+              <div style="font-family:var(--font-mono); font-size:12px; color:var(--text-muted); padding:3px 0; border-bottom:1px solid var(--border);">
+                <span style="color:var(--text-light); margin-right:8px;">*</span><%= path %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <div class="error-header-meta">
+    <div class="error-header-stat">
+      <strong><%= @occurrence.occurred_at.strftime("%B %d, %Y at %H:%M:%S %Z") %></strong>
+    </div>
+    <% if @occurrence.sidekiq? %>
+      <span class="badge badge-purple">Sidekiq</span>
+    <% else %>
+      <span class="badge badge-blue">Web</span>
+    <% end %>
+    <% if @occurrence.environment.present? %>
+      <span class="badge badge-gray"><%= @occurrence.environment %></span>
+    <% end %>
+  </div>
+</div>
+
+<%# ── Caused by ── %>
+<% if @occurrence.cause_class.present? %>
+  <div class="section">
+    <div class="caused-by">
+      <div class="caused-by-label">Caused by</div>
+      <div class="caused-by-class"><%= @occurrence.cause_class %></div>
+      <% if @occurrence.cause_message.present? %>
+        <div class="caused-by-message"><%= @occurrence.cause_message %></div>
+      <% end %>
+    </div>
+  </div>
+<% end %>
+
+<%# ── Tags / Context ── %>
+<div class="section">
+  <div class="section-title">Context</div>
+  <div class="meta-grid">
+    <% if @occurrence.request_id.present? %>
+      <div class="meta-item">
+        <div class="meta-label">Request ID</div>
+        <div class="meta-value"><%= @occurrence.request_id %></div>
+      </div>
+    <% end %>
+    <% if @occurrence.web? %>
+      <% if @occurrence.http_method.present? %>
+        <div class="meta-item">
+          <div class="meta-label">Method</div>
+          <div class="meta-value"><%= @occurrence.http_method %></div>
+        </div>
+      <% end %>
+      <% if @occurrence.url.present? %>
+        <div class="meta-item">
+          <div class="meta-label">URL</div>
+          <div class="meta-value"><%= @occurrence.url %></div>
+        </div>
+      <% end %>
+      <% if @occurrence.ip_address.present? %>
+        <div class="meta-item">
+          <div class="meta-label">IP Address</div>
+          <div class="meta-value"><%= @occurrence.ip_address %></div>
+        </div>
+      <% end %>
+      <% if @occurrence.forwarded_for.present? %>
+        <div class="meta-item">
+          <div class="meta-label">X-Forwarded-For</div>
+          <div class="meta-value"><%= @occurrence.forwarded_for %></div>
+        </div>
+      <% end %>
+      <% if @occurrence.user_agent.present? %>
+        <div class="meta-item">
+          <div class="meta-label">User Agent</div>
+          <div class="meta-value"><%= @occurrence.user_agent %></div>
+        </div>
+      <% end %>
+    <% end %>
+    <% if @occurrence.sidekiq? %>
+      <% if @occurrence.job_class.present? %>
+        <div class="meta-item">
+          <div class="meta-label">Job Class</div>
+          <div class="meta-value"><%= @occurrence.job_class %></div>
+        </div>
+      <% end %>
+      <% if @occurrence.queue.present? %>
+        <div class="meta-item">
+          <div class="meta-label">Queue</div>
+          <div class="meta-value"><%= @occurrence.queue %></div>
+        </div>
+      <% end %>
+      <% if @occurrence.job_id.present? %>
+        <div class="meta-item">
+          <div class="meta-label">Job ID</div>
+          <div class="meta-value"><%= @occurrence.job_id %></div>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</div>
+
+<%# ── Parameters / Job Args ── %>
+<% params_data = @occurrence.web? ? @occurrence.parsed_parameters : { args: @occurrence.parsed_job_args } %>
+<% if params_data.present? && params_data.any? %>
+  <div class="section">
+    <div class="section-title"><%= @occurrence.web? ? "Parameters" : "Job Arguments" %></div>
+    <div class="card" style="overflow:hidden;">
+      <div style="padding:16px;">
+        <pre style="font-family: var(--font-mono); font-size:12px; color: var(--text); line-height:1.6; white-space:pre-wrap; word-break:break-all; margin:0;"><%= JSON.pretty_generate(params_data) %></pre>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<%# ── App Backtrace ── %>
+<% app_bt = @occurrence.app_backtrace %>
+<% if app_bt.any? %>
+  <div class="section">
+    <div class="section-title">Application Backtrace</div>
+    <div class="card" style="overflow:hidden;">
+      <div class="backtrace" style="padding:16px;">
+        <% app_bt.each do |line| %>
+          <%
+            clean = line.sub("#{Rails.root}/", "")
+            parts = clean.match(/\A(.+):(\d+):in (.+)\z/)
+          %>
+          <div class="backtrace-line app-line">
+            <% if parts %>
+              <span class="line-file"><%= parts[1] %></span>:<span class="line-number"><%= parts[2] %></span>:<span style="color: var(--text-muted);">in <%= parts[3] %></span>
+            <% else %>
+              <%= clean %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<%# ── Full Backtrace ── %>
+<div class="section">
+  <div class="section-title">Full Backtrace</div>
+  <div class="card" style="overflow:hidden;">
+    <div class="backtrace" style="padding:16px; max-height:400px; overflow-y:auto;">
+      <% @occurrence.parsed_backtrace.each do |line| %>
+        <% is_app = line.start_with?(Rails.root.to_s) %>
+        <div class="backtrace-line <%= 'app-line' if is_app %>">
+          <%= is_app ? line.sub("#{Rails.root}/", "") : line %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<%# ── Request Headers ── %>
+<% headers = @occurrence.parsed_request_headers %>
+<% if headers.any? %>
+  <div class="section">
+    <div class="section-title">Request Headers</div>
+    <div class="card" style="overflow:hidden;">
+      <table>
+        <% headers.each do |key, value| %>
+          <tr>
+            <td style="width:220px; font-family: var(--font-mono); font-size:12px; font-weight:600; color: var(--text-muted); white-space:nowrap;"><%= key %></td>
+            <td style="font-family: var(--font-mono); font-size:12px; color: var(--text); word-break:break-all;"><%= value %></td>
+          </tr>
+        <% end %>
+      </table>
+    </div>
+  </div>
+<% end %>
+
+<div style="padding: 16px 0; display:flex; align-items:center; justify-content:space-between; width:100%;">
+  <%= link_to "← Back to occurrences", error_path(@group), class: "btn btn-secondary" %>
+  <div style="display:flex; gap:8px;">
+    <% if @newer %>
+      <%= link_to "← Newer", error_occurrence_path(@group, @newer), class: "btn btn-secondary btn-sm" %>
+    <% else %>
+      <span class="btn btn-secondary btn-sm" style="opacity:0.4; cursor:default;">← Newer</span>
+    <% end %>
+    <% if @older %>
+      <%= link_to "Older →", error_occurrence_path(@group, @older), class: "btn btn-secondary btn-sm" %>
+    <% else %>
+      <span class="btn btn-secondary btn-sm" style="opacity:0.4; cursor:default;">Older →</span>
+    <% end %>
+  </div>
+</div>

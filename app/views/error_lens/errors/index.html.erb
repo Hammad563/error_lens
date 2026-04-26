@@ -1,0 +1,153 @@
+<div class="page-header">
+  <div>
+    <div class="page-title">Errors</div>
+    <div class="page-subtitle">Grouped by type &amp; location</div>
+  </div>
+  <div style="display:flex; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:3px; gap:2px;">
+    <%= link_to "Unresolved", errors_path(q: params[:q]),
+          style: "padding:5px 14px; border-radius:4px; font-size:13px; font-weight:500; text-decoration:none; transition:all 0.15s; #{params[:resolved] != 'true' ? 'background:white; color:var(--text); box-shadow:var(--shadow-sm);' : 'color:var(--text-muted);'}" %>
+    <%= link_to "Resolved", errors_path(q: params[:q], resolved: "true"),
+          style: "padding:5px 14px; border-radius:4px; font-size:13px; font-weight:500; text-decoration:none; transition:all 0.15s; #{params[:resolved] == 'true' ? 'background:white; color:var(--text); box-shadow:var(--shadow-sm);' : 'color:var(--text-muted);'}" %>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Errors</div>
+    <div class="stat-value"><%= ErrorLens::ErrorGroup.unresolved.count %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Last 24 Hours</div>
+    <div class="stat-value red"><%= ErrorLens::ErrorGroup.unresolved.where("last_seen_at > ?", 24.hours.ago).count %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Occurrences</div>
+    <div class="stat-value"><%= ErrorLens::ErrorGroup.sum(:occurrences_count) %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Resolved</div>
+    <div class="stat-value green"><%= ErrorLens::ErrorGroup.resolved.count %></div>
+  </div>
+</div>
+
+<%# Search — full width, no button, submits on Enter %>
+<%= form_with url: errors_path, method: :get, local: true do |f| %>
+  <%= f.hidden_field :resolved, value: params[:resolved] if params[:resolved].present? %>
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+    <div class="input-with-icon" style="flex:1;">
+      <svg class="input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <%= f.text_field :q, value: params[:q], placeholder: "Search errors by class or message…", class: "input", autocomplete: "off", style: "height:40px;" %>
+    </div>
+    <% if params[:q].present? %>
+      <%= link_to "Clear", errors_path(resolved: params[:resolved]), class: "btn btn-ghost" %>
+    <% end %>
+  </div>
+<% end %>
+
+<div class="card">
+  <% if @groups.any? %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:100%">Error</th>
+            <th style="white-space:nowrap;">Occurrences</th>
+            <th style="white-space:nowrap;">Last Seen</th>
+            <th>Source</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @groups.each do |group| %>
+            <tr style="cursor:pointer;" onclick="window.location='<%= error_path(group) %>'">
+              <td>
+                <div style="display:flex; align-items:flex-start; gap:8px;">
+                  <%
+                    hours_since = ((Time.current - group.last_seen_at) / 3600).to_f rescue 999
+                    dot_class = hours_since < 24 ? "dot-red" : hours_since < 168 ? "dot-orange" : "dot-gray"
+                  %>
+                  <span class="dot <%= dot_class %>" style="margin-top:4px; flex-shrink:0;"></span>
+                  <div>
+                    <div class="error-class"><%= group.error_class %></div>
+                    <% if group.formatted_location %>
+                      <div class="error-location"><%= truncate(group.formatted_location, length: 80) %></div>
+                    <% end %>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div style="font-size:20px; font-weight:700; color:var(--text); letter-spacing:-0.5px;">
+                  <%= number_with_delimiter(group.occurrences_count) %>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted);">times</div>
+              </td>
+              <td>
+                <div class="last-seen" style="white-space:nowrap;">
+                  <% if group.last_seen_at %>
+                    <%= time_ago_in_words(group.last_seen_at) %> ago
+                  <% end %>
+                </div>
+              </td>
+              <td>
+                <% if group.source == "web" %>
+                  <span class="badge badge-blue">Web</span>
+                <% elsif group.source == "sidekiq" %>
+                  <span class="badge badge-purple">Sidekiq</span>
+                <% elsif group.source == "both" %>
+                  <span class="badge badge-gray">Both</span>
+                <% end %>
+              </td>
+              <td onclick="event.stopPropagation();">
+                <div style="display:flex; gap:6px; justify-content:flex-end;">
+                  <% unless group.resolved? %>
+                    <%= button_to "Resolve", resolve_error_path(group), method: :post, class: "btn btn-success btn-sm", form: { style: "display:inline" } %>
+                  <% else %>
+                    <%= button_to "Reopen", unresolve_error_path(group), method: :post, class: "btn btn-secondary btn-sm", form: { style: "display:inline" } %>
+                  <% end %>
+                  <%= button_to "Delete", error_path(group), method: :delete, class: "btn btn-danger btn-sm", data: { confirm: "Delete this error group and all occurrences?" }, form: { style: "display:inline" } %>
+                </div>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if @total_pages > 1 %>
+      <div class="pagination">
+        <% if @page > 1 %>
+          <%= link_to "←", errors_path(q: params[:q], page: @page - 1) %>
+        <% else %>
+          <span class="disabled">←</span>
+        <% end %>
+
+        <% (1..@total_pages).each do |p| %>
+          <% if p == @page %>
+            <span class="current"><%= p %></span>
+          <% else %>
+            <%= link_to p, errors_path(q: params[:q], page: p) %>
+          <% end %>
+        <% end %>
+
+        <% if @page < @total_pages %>
+          <%= link_to "→", errors_path(q: params[:q], page: @page + 1) %>
+        <% else %>
+          <span class="disabled">→</span>
+        <% end %>
+      </div>
+    <% end %>
+
+  <% else %>
+    <div class="empty-state">
+      <div class="empty-state-icon">&#10003;</div>
+      <div class="empty-state-title"><%= params[:q].present? ? "No errors matching \"#{params[:q]}\"" : "No errors recorded" %></div>
+      <div class="empty-state-text"><%= params[:q].present? ? "Try a different search term." : "Your application is running cleanly." %></div>
+    </div>
+  <% end %>
+</div>
+
+<div style="text-align:center; color: var(--text-light); font-size:12px; padding: 20px 0;">
+  Showing <%= @groups.count %> of <%= @total %> error groups
+</div>
